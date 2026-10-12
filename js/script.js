@@ -1,11 +1,14 @@
-// --- ВСТАВИТЬ В САМЫЙ ВЕРХ ФАЙЛА ---
+// --- Глобальные переменные для сети ---
 const peer = new Peer(); 
 let conn = null;
 let mySymbol = '';     // 'X' або 'O'
-let myTurn = false;    // Чи можна зараз ходити
+let myTurn = false;    // Чи можна зараз ходити онлайн
+
+// --- Элементы интерфейса ---
 const boardElement = document.getElementById('board');
 const cells = document.querySelectorAll('.cell');
-const statusText = document.getElementById('status');
+const statusText = document.getElementById('game-status'); // Для игрового поля
+const netStatusEl = document.getElementById('net-status'); // Для панели онлайна
 const menu = document.getElementById('menu');
 const gameArea = document.getElementById('game-area');
 const aiSettings = document.getElementById('ai-settings');
@@ -13,40 +16,15 @@ const aiSettings = document.getElementById('ai-settings');
 let board = ["", "", "", "", "", "", "", "", ""];
 let currentPlayer = "X";
 let gameActive = true;
-let mode = ""; // "player" или "ai"
+let mode = ""; // "player", "ai" или "online"
 let difficulty = "easy";
 
-const winningConditions = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8], // Ряды
-    [0, 3, 6], [1, 4, 7], [2, 5, 8], // Колонки
-    [0, 4, 8], [2, 4, 6]             // Диагонали
+const winningConditions = [, [3, 4, 5], [6, 7, 8], // Ряды, [1, 4, 7], [2, 5, 8], // Колонки, [2, 4, 6]             // Диагонали
 ];
 
 // Инициализация кнопок меню
 document.getElementById('btn-vs-player').addEventListener('click', () => startGame('player'));
 document.getElementById('btn-vs-ai').addEventListener('click', () => {
-// Пример вашей функции клика (найдите похожую у себя):
-cell.addEventListener('click', (e) => {
-    const index = e.target.getAttribute('data-index'); // или id клетки
-
-    // 1. ДОБАВИТЬ ЭТУ СТРОКУ В НАЧАЛО КЛИКА:
-    // Если не наш ход, нет сети или клетка занята — игнорируем клик
-    if (!myTurn || !conn || gameState[index] !== '') return;
-
-    // ... Тут остается ВАШ старый код, который рисует крестик/нолик на экране ...
-    // Например: e.target.innerText = mySymbol;
-
-    // 2. ДОБАВИТЬ ЭТУ СТРОКУ ПОСЛЕ ОТРИСОВКИ ХОДА:
-    // Отправляем этот ход другу по сети
-    conn.send({ type: 'move', index: index, symbol: mySymbol });
-
-    // 3. ДОБАВИТЬ ЭТИ СТРОКИ:
-    myTurn = false; // Передаем ход
-    document.getElementById('status').innerText = "Очікування ходу суперника...";
-    
-    // ... Тут ваш код проверки победы (например, checkWin()) ...
-});
-
     aiSettings.classList.remove('hidden');
     document.getElementById('btn-vs-player').classList.add('hidden');
     document.getElementById('btn-vs-ai').classList.add('hidden');
@@ -55,7 +33,13 @@ document.getElementById('start-ai-game').addEventListener('click', () => {
     difficulty = document.getElementById('difficulty').value;
     startGame('ai');
 });
-document.getElementById('btn-restart').addEventListener('click', resetBoard);
+document.getElementById('btn-restart').addEventListener('click', () => {
+    if (mode === 'online') {
+        // В онлайн-режиме сброс поля синхронизируем (опционально можно добавить отправку события)
+        return alert("В онлайн-режимі перезапуск недоступний, створіть нову кімнату.");
+    }
+    resetBoard();
+});
 document.getElementById('btn-back').addEventListener('click', showMenu);
 
 function startGame(selectedMode) {
@@ -73,19 +57,37 @@ function showMenu() {
     document.getElementById('btn-vs-ai').classList.remove('hidden');
 }
 
+// Навешиваем событие клика на клетки
 cells.forEach(cell => cell.addEventListener('click', handleCellClick));
 
 function handleCellClick(e) {
     const clickedCell = e.target;
     const clickedIndex = parseInt(clickedCell.getAttribute('data-index'));
 
+    // Если клетка занята или игра окончена — ничего не делаем
     if (board[clickedIndex] !== "" || !gameActive) return;
 
-    makeMove(clickedIndex, currentPlayer);
-    checkResult();
+    // ЕСЛИ ИГРАЕМ ОНЛАЙН С ДРУГОМ
+    if (mode === 'online') {
+        if (!myTurn || !conn) return; // Если сейчас не наш ход — блокируем клик
 
-    if (gameActive && mode === 'ai' && currentPlayer === "O") {
-        setTimeout(makeAIMove, 300); // Небольшая задержка для реалистичности
+        makeMove(clickedIndex, mySymbol);
+        
+        // Отправляем ход другу по сети
+        conn.send({ type: 'move', index: clickedIndex, symbol: mySymbol });
+
+        myTurn = false; 
+        netStatusEl.innerText = "Очікування ходу суперника...";
+        checkResult();
+    } 
+    // ЕСЛИ ИГРАЕМ ЛОКАЛЬНО ИЛИ С ИИ
+    else {
+        makeMove(clickedIndex, currentPlayer);
+        checkResult();
+
+        if (gameActive && mode === 'ai' && currentPlayer === "O") {
+            setTimeout(makeAIMove, 300); 
+        }
     }
 }
 
@@ -93,8 +95,12 @@ function makeMove(index, player) {
     board[index] = player;
     cells[index].innerText = player;
     cells[index].classList.add(player.toLowerCase());
+    
+    // Переключаем игрока для локального режима
     currentPlayer = player === "X" ? "O" : "X";
-    if (gameActive) statusText.innerText = `Хід гравця ${currentPlayer}`;
+    if (gameActive && mode !== 'online') {
+        statusText.innerText = `Хід гравця ${currentPlayer}`;
+    }
 }
 
 function checkResult() {
@@ -108,13 +114,21 @@ function checkResult() {
     }
 
     if (roundWon) {
-        statusText.innerText = `Гравець ${currentPlayer === "X" ? "O" : "X"} переміг!`;
+        // Определяем кто победил, основываясь на режиме
+        let winner = "";
+        if (mode === 'online') {
+            // Если выиграл тот символ, который сходил последним перед проверкой
+            winner = myTurn ? (mySymbol === 'X' ? 'O' : 'X') : mySymbol;
+        } else {
+            winner = currentPlayer === "X" ? "O" : "X";
+        }
+        statusText.innerText = `Гравець ${winner} переміг! 🎉`;
         gameActive = false;
         return;
     }
 
     if (!board.includes("")) {
-        statusText.innerText = "Нічия!";
+        statusText.innerText = "Нічия! 🤝";
         gameActive = false;
         return;
     }
@@ -137,17 +151,14 @@ function makeAIMove() {
     const availableEmptyCells = board.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
 
     if (difficulty === "easy") {
-        // Случайный ход
         bestMove = availableEmptyCells[Math.floor(Math.random() * availableEmptyCells.length)];
     } else if (difficulty === "medium") {
-        // 50% шанс сделать идеальный ход, 50% - случайный
         if (Math.random() > 0.5) {
             bestMove = minimax(board, "O").index;
         } else {
             bestMove = availableEmptyCells[Math.floor(Math.random() * availableEmptyCells.length)];
         }
     } else {
-        // Сложный (Алгоритм Minimax) - всегда идеальный ход
         bestMove = minimax(board, "O").index;
     }
 
@@ -155,7 +166,6 @@ function makeAIMove() {
     checkResult();
 }
 
-// Алгоритм Minimax для сложного ИИ
 function minimax(newBoard, player) {
     const availSpots = newBoard.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
 
@@ -200,7 +210,6 @@ function minimax(newBoard, player) {
     return moves[bestMove];
 }
 
-// Вспомогательная функция для Minimax
 function checkWinning(board, player) {
     return winningConditions.some(condition => 
         board[condition[0]] === player && 
@@ -208,26 +217,33 @@ function checkWinning(board, player) {
         board[condition[2]] === player
     );
 }
-// --- ВСТАВИТЬ В САМЫЙ КОНЕЦ ФАЙЛА ---
 
-const statusEl = document.getElementById('status');
+// --- СЕТЕВАЯ ЛОГИКА PEERJS ---
 
-// Получаем ваш ID от сервера и выводим на экран
+// 1. Получаем ID от сигнального сервера
 peer.on('open', (id) => {
     document.getElementById('my-id').innerText = id;
-    statusEl.innerText = "Надішліть свій ID другу або введіть ID друга для початку гри.";
+    netStatusEl.innerText = "Надішліть свій ID другу або введіть ID друга для гри онлайн.";
 });
 
-// Логика для Игрока 1 (к вам подключился друг)
+// 2. Игрок 1: К нам подключается друг
 peer.on('connection', (connection) => {
     conn = connection;
     mySymbol = 'X'; 
     myTurn = true;  
-    statusEl.innerText = "Друг підключився! Ваш хід (Х)";
+    mode = 'online';
+    
+    // Перекидываем игрока сразу в игру
+    menu.classList.add('hidden');
+    gameArea.classList.remove('hidden');
+    resetBoard();
+
+    statusText.innerText = "Гра онлайн. Ваш хід (Х)";
+    netStatusEl.innerText = "Друг підключився!";
     setupNetworkListeners();
 });
 
-// Логика для Игрока 2 (вы подключаетесь по кнопке)
+// 3. Игрок 2: Мы сами подключаемся по кнопке
 function connectToFriend() {
     const friendId = document.getElementById('friend-id').value.trim();
     if (!friendId) return alert("Будь ласка, введіть ID!");
@@ -235,23 +251,32 @@ function connectToFriend() {
     conn = peer.connect(friendId); 
     mySymbol = 'O'; 
     myTurn = false; 
-    statusEl.innerText = "Підключення... Очікування ходу суперника (Х)";
+    mode = 'online';
+
+    menu.classList.add('hidden');
+    gameArea.classList.remove('hidden');
+    resetBoard();
+
+    statusText.innerText = "Гра онлайн. Очікування ходу суперника (Х)";
+    netStatusEl.innerText = "Підключення до друга...";
     setupNetworkListeners();
 }
 
-// Прием хода от друга по сети
+// 4. Слушаем ходы по сети
 function setupNetworkListeners() {
     conn.on('data', (data) => {
         if (data.type === 'move') {
-            // ВЫЗЫВАЕМ ВАШУ ФУНКЦИЮ ОТРИСОВКИ ХОДА СУПЕРНИКА
-            // Передаем индекс клетки data.index и его символ data.symbol
             makeMove(data.index, data.symbol); 
-            
             myTurn = true; 
-            statusEl.innerText = `Ваш хід (${mySymbol})`;
-            
-            // ВЫЗЫВАЕМ ВАШУ ФУНКЦИЮ ПРОВЕРКИ КОНЦА ИГРЫ
-            checkGameEnd(); 
+            statusText.innerText = `Ваш хід (${mySymbol})`;
+            netStatusEl.innerText = "Суперник зробив хід.";
+            checkResult(); 
         }
     });
+
+    conn.on('close', () => {
+        netStatusEl.innerText = "Суперник відключився від мережі 🔌";
+        gameActive = false;
+    });
 }
+

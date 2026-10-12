@@ -19,9 +19,11 @@ let gameActive = true;
 let mode = ""; 
 let difficulty = "easy";
 
-const winningConditions = [, [3, 4, 5], [6, 7, 8],
-, [1, 4, 7], [2, 5, 8],
-, [2, 4, 6]
+// Исправлено: Все выигрышные комбинации на месте
+const winningConditions = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
 ];
 
 // Показываем сгенерированный ID на экране сразу!
@@ -82,7 +84,7 @@ function handleCellClick(e) {
         });
 
         myTurn = false; 
-        netStatusEl.innerText = "Очікування ходу суперника...";
+        netStatusEl.innerText = "Очікування ходу ...";
         checkResult();
     } else {
         makeMove(clickedIndex, currentPlayer);
@@ -138,7 +140,7 @@ function resetBoard() {
     });
 }
 
-// --- Логика ИИ (Твой Минимакс) ---
+// --- Логика ИИ ---
 function makeAIMove() {
     let bestMove;
     const availableEmptyCells = board.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
@@ -157,6 +159,7 @@ function minimax(newBoard, player) {
     else if (checkWinning(newBoard, "O")) return { score: 10 };
     else if (availSpots.length === 0) return { score: 0 };
 
+    // Исправлено: Массив теперь объявлен правильно
     const moves = [];
     for (let i = 0; i < availSpots.length; i++) {
         const move = {};
@@ -187,10 +190,9 @@ function checkWinning(board, player) {
     return winningConditions.some(cond => board[cond[0]] === player && board[cond[1]] === player && board[cond[2]] === player);
 }
 
-// --- НОВАЯ СЕТЕВАЯ ЛОГИКА НА ЧИСТОМ JS ---
+// --- СЕТЕВАЯ ЛОГИКА НА ЧИСТОМ JS ---
 let friendId = "";
 
-// Подключение к другу
 function connectToFriend() {
     friendId = document.getElementById('friend-id').value.trim().toUpperCase();
     if (!friendId) return alert("Введіть ID!");
@@ -204,14 +206,10 @@ function connectToFriend() {
     statusText.innerText = "Гра онлайн. Очікування ходу суперника (Х)";
     netStatusEl.innerText = "Підключено до друга!";
 
-    // Сигнализируем другу, что мы зашли
     fetch(`https://kvdb.io{friendId}-join`, { method: 'POST', body: myId });
-
-    // Начинаем слушать ходы
     setInterval(listenForMoves, 1000);
 }
 
-// Ожидание подключения друга (для Игрока 1)
 setInterval(() => {
     if (mode === 'online' || conn) return;
     
@@ -232,8 +230,6 @@ setInterval(() => {
     }).catch(() => {});
 }, 2000);
 
-// Слушаем входящие ходы
-let lastMoveTime = 0;
 function listenForMoves() {
     if (!conn || myTurn) return;
 

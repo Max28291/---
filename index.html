@@ -5,20 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Хрестики-Нулики</title>
     <link rel="stylesheet" href="css/style.css">
-<script src="https://unpkg.com"></script>
 </head>
-<<!-- Блок мережевого підключення -->
-<div class="network-controls">
-    <p>Ваш ID для друга: <strong id="my-id">Завантаження...</strong></p>
-    <input type="text" id="friend-id" placeholder="Введи ID друга">
-    <button onclick="connectToFriend()">Підключитися до друга</button>
-</div>
+<body>
 
-<!-- Статус гри (чий зараз хід) -->
-<div id="status">Очікування підключення...</div>
     <div class="container">
         <h1>Хрестики-Нулики</h1>
         
+        <!-- Блок мережевого підключення -->
+        <div class="network-controls" style="margin: 15px auto; padding: 15px; border: 1px solid #ccc; border-radius: 8px; max-width: 300px;">
+            <p>Ваш ID для друга: <strong id="my-id" style="color: #dc3545;">Завантаження...</strong></p>
+            <input type="text" id="friend-id" placeholder="Введіть ID друга" style="width: 140px; padding: 4px;">
+            <button onclick="connectToFriend()" style="padding: 4px 8px; cursor: pointer;">Підключитися</button>
+        </div>
+
+        <!-- Головне інформаційне табло для онлайну -->
+        <div id="net-status" style="font-weight: bold; margin: 10px; color: #007bff;">З'єднання з мережею...</div>
+
         <!-- Меню выбора режима -->
         <div id="menu">
             <button id="btn-vs-player">Грати з другом (Локально)</button>
@@ -37,7 +39,8 @@
 
         <!-- Игровое поле -->
         <div id="game-area" class="hidden">
-            <h2 id="status">Хід гравца X</h2>
+            <!-- Изменили id со status на game-status, чтобы код не ломался -->
+            <h2 id="game-status">Хід гравця X</h2>
             <div class="board" id="board">
                 <div class="cell" data-index="0"></div>
                 <div class="cell" data-index="1"></div>
@@ -52,7 +55,11 @@
             <button id="btn-restart">Почати знову</button>
             <button id="btn-back">До меню</button>
         </div>
-<script src="https://unpkg.com"></script>
-<script src="js/script.js"></script>
+    </div>
+
+    <!-- ВАЖНО: Правильное подключение библиотеки PeerJS перед твоим скриптом -->
+    <script src="https://unpkg.com"></script>
+    <script src="js/script.js"></script>
 </body>
 </html>
+

@@ -1,247 +1,136 @@
-// --- Чистый автономный онлайн (без внешних библиотек) ---
+// Инициализируем сеть PeerJS
+const peer = new Peer(); 
 let conn = null;
-let mySymbol = '';     // 'X' або 'O'
-let myTurn = false;    // Чи можна зараз ходити онлайн
-let myId = Math.random().toString(36).substring(2, 8).toUpperCase(); // Генерируем ID сами!
+let mySymbol = '';     // 'X' или 'O'
+let myTurn = false;    // Можно ли сейчас ходить онлайн
+let board = ["", "", "", "", "", "", "", "", ""];
 
-// --- Элементы интерфейса ---
-const boardElement = document.getElementById('board');
+// Элементы интерфейса
 const cells = document.querySelectorAll('.cell');
 const statusText = document.getElementById('game-status'); 
 const netStatusEl = document.getElementById('net-status'); 
 const menu = document.getElementById('menu');
 const gameArea = document.getElementById('game-area');
-const aiSettings = document.getElementById('ai-settings');
 
-let board = ["", "", "", "", "", "", "", "", ""];
-let currentPlayer = "X";
-let gameActive = true;
-let mode = ""; 
-let difficulty = "easy";
-
-// Исправлено: Все выигрышные комбинации на месте
-const winningConditions = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],
-    [0, 4, 8], [2, 4, 6]
-];
-
-// Показываем сгенерированный ID на экране сразу!
-window.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('my-id').innerText = myId;
-    netStatusEl.innerText = "ID успішно створено. Надішліть його другу!";
+// 1. Получаем уникальный ID от сервера
+peer.on('open', (id) => {
+    document.getElementById('my-id').innerText = id;
+    if(netStatusEl) netStatusEl.innerText = "ID успішно створено! Надішліть його другу.";
 });
 
-// Инициализация кнопок меню
-document.getElementById('btn-vs-player').addEventListener('click', () => startGame('player'));
-document.getElementById('btn-vs-ai').addEventListener('click', () => {
-    aiSettings.classList.remove('hidden');
-    document.getElementById('btn-vs-player').classList.add('hidden');
-    document.getElementById('btn-vs-ai').classList.add('hidden');
+// 2. Логика Игрока 1 (Создатель комнаты — ждет подключения друга)
+peer.on('connection', (connection) => {
+    conn = connection;
+    mySymbol = 'X'; // Создатель всегда X
+    myTurn = true;  // И ходит первым!
+    
+    // Переключаем экраны меню на игру
+    if(menu) menu.classList.add('hidden');
+    if(gameArea) gameArea.classList.remove('hidden');
+    
+    statusText.innerText = "Гра онлайн. Ваш хід (Х)";
+    if(netStatusEl) netStatusEl.innerText = "Друг підключився!";
+    
+    setupNetworkListeners();
 });
-document.getElementById('start-ai-game').addEventListener('click', () => {
-    difficulty = document.getElementById('difficulty').value;
-    startGame('ai');
-});
-document.getElementById('btn-restart').addEventListener('click', () => {
-    if (mode === 'online') return alert("В онлайн-режимі перезапуск недоступний.");
-    resetBoard();
-});
-document.getElementById('btn-back').addEventListener('click', showMenu);
 
-cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+// 3. Логика Игрока 2 (Кто вводит ID друга и нажимает кнопку)
+function connectToFriend() {
+    const friendId = document.getElementById('friend-id').value.trim();
+    if (!friendId) return alert("Введіть ID друга!");
+    
+    conn = peer.connect(friendId); 
+    mySymbol = 'O'; // Подключившийся всегда O
+    myTurn = false; // И ждет первого хода соперника
 
-function startGame(selectedMode) {
-    mode = selectedMode;
-    menu.classList.add('hidden');
-    gameArea.classList.remove('hidden');
-    resetBoard();
+    if(menu) menu.classList.add('hidden');
+    if(gameArea) gameArea.classList.remove('hidden');
+
+    statusText.innerText = "Гра онлайн. Очікування ходу суперника (Х)";
+    if(netStatusEl) netStatusEl.innerText = "Підключення до друга...";
+    
+    setupNetworkListeners();
 }
 
-function showMenu() {
-    gameArea.classList.add('hidden');
-    menu.classList.remove('hidden');
-    aiSettings.classList.add('hidden');
-    document.getElementById('btn-vs-player').classList.remove('hidden');
-    document.getElementById('btn-vs-ai').classList.remove('hidden');
-}
-
-function handleCellClick(e) {
-    const clickedCell = e.target;
-    const clickedIndex = parseInt(clickedCell.getAttribute('data-index'));
-
-    if (board[clickedIndex] !== "" || !gameActive) return;
-
-    if (mode === 'online') {
-        if (!myTurn || !conn) return;
-
-        makeMove(clickedIndex, mySymbol);
-        
-        // Отправляем ход через бесплатный веб-канал
-        fetch(`https://kvdb.io{myId}-move`, {
-            method: 'POST',
-            body: JSON.stringify({ index: clickedIndex, symbol: mySymbol })
-        });
-
-        myTurn = false; 
-        netStatusEl.innerText = "Очікування ходу ...";
-        checkResult();
-    } else {
-        makeMove(clickedIndex, currentPlayer);
-        checkResult();
-        if (gameActive && mode === 'ai' && currentPlayer === "O") {
-            setTimeout(makeAIMove, 300); 
+// 4. Прием ходов по сети
+function setupNetworkListeners() {
+    // Этот код сработает у Игрока 2, когда связь установится полностью
+    conn.on('open', () => {
+        if(mySymbol === 'O') {
+            if(netStatusEl) netStatusEl.innerText = "Успішно підключено до друга!";
         }
-    }
-}
+    });
 
-function makeMove(index, player) {
-    board[index] = player;
-    cells[index].innerText = player;
-    cells[index].classList.add(player.toLowerCase());
-    currentPlayer = player === "X" ? "O" : "X";
-    if (gameActive && mode !== 'online') {
-        statusText.innerText = `Хід гравця ${currentPlayer}`;
-    }
-}
-
-function checkResult() {
-    let roundWon = false;
-    for (let i = 0; i < winningConditions.length; i++) {
-        const [a, b, c] = winningConditions[i];
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            roundWon = true;
-            break;
+    // Принимаем ход от соперника
+    conn.on('data', (data) => {
+        if (data.type === 'move') {
+            const idx = data.index;
+            board[idx] = data.symbol;
+            cells[idx].innerText = data.symbol;
+            cells[idx].classList.add(data.symbol.toLowerCase());
+            
+            myTurn = true; // Теперь наш ход!
+            statusText.innerText = `Ваш хід (${mySymbol})`;
+            if(netStatusEl) netStatusEl.innerText = "Суперник зробив хід.";
+            checkOnlineResult(); 
         }
-    }
+    });
 
-    if (roundWon) {
-        let winner = mode === 'online' ? (myTurn ? (mySymbol === 'X' ? 'O' : 'X') : mySymbol) : (currentPlayer === "X" ? "O" : "X");
-        statusText.innerText = `Гравець ${winner} переміг! 🎉`;
-        gameActive = false;
-        return;
-    }
-
-    if (!board.includes("")) {
-        statusText.innerText = "Нічия! 🤝";
-        gameActive = false;
-        return;
-    }
-}
-
-function resetBoard() {
-    board = ["", "", "", "", "", "", "", "", ""];
-    currentPlayer = "X";
-    gameActive = true;
-    statusText.innerText = `Хід гравця X`;
-    cells.forEach(cell => {
-        cell.innerText = "";
-        cell.classList.remove('x', 'o');
+    conn.on('close', () => {
+        if(netStatusEl) netStatusEl.innerText = "Суперник відключився 🔌";
+        myTurn = false;
     });
 }
 
-// --- Логика ИИ ---
-function makeAIMove() {
-    let bestMove;
-    const availableEmptyCells = board.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
-    if (difficulty === "easy") {
-        bestMove = availableEmptyCells[Math.floor(Math.random() * availableEmptyCells.length)];
-    } else {
-        bestMove = minimax(board, "O").index;
-    }
-    makeMove(bestMove, "O");
-    checkResult();
-}
+// 5. Обработка клика по игровому полю
+cells.forEach(cell => {
+    cell.addEventListener('click', (e) => {
+        const index = parseInt(e.target.getAttribute('data-index'));
 
-function minimax(newBoard, player) {
-    const availSpots = newBoard.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
-    if (checkWinning(newBoard, "X")) return { score: -10 };
-    else if (checkWinning(newBoard, "O")) return { score: 10 };
-    else if (availSpots.length === 0) return { score: 0 };
+        // Блокируем клик, если:
+        // - не наш ход
+        // - нет сетевого соединения
+        // - клетка уже занята
+        if (!myTurn || !conn || board[index] !== '') return;
 
-    // Исправлено: Массив теперь объявлен правильно
-    const moves = [];
-    for (let i = 0; i < availSpots.length; i++) {
-        const move = {};
-        move.index = availSpots[i];
-        newBoard[availSpots[i]] = player;
-        if (player === "O") move.score = minimax(newBoard, "X").score;
-        else move.score = minimax(newBoard, "O").score;
-        newBoard[availSpots[i]] = "";
-        moves.push(move);
-    }
+        // Рисуем свой ход на своем экране
+        board[index] = mySymbol;
+        e.target.innerText = mySymbol;
+        e.target.classList.add(mySymbol.toLowerCase());
+        
+        // Отправляем данные о ходе другу по сети
+        conn.send({ type: 'move', index: index, symbol: mySymbol });
 
-    let bestMove;
-    if (player === "O") {
-        let bestScore = -10000;
-        for (let i = 0; i < moves.length; i++) {
-            if (moves[i].score > bestScore) { bestScore = moves[i].score; bestMove = i; }
-        }
-    } else {
-        let bestScore = 10000;
-        for (let i = 0; i < moves.length; i++) {
-            if (moves[i].score < bestScore) { bestScore = moves[i].score; bestMove = i; }
+        myTurn = false; // Передаем ход сопернику
+        statusText.innerText = "Очікування ходу суперника...";
+        checkOnlineResult();
+    });
+});
+
+// Проверка победы или ничьей
+function checkOnlineResult() {
+    const wins = [, [3, 4, 5], [6, 7, 8], // Ряды, [1, 4, 7], [2, 5, 8], // Колонки, [2, 4, 6]             // Диагонали
+    ];
+    let won = false;
+    for (let combo of wins) {
+        if (board[combo[0]] && board[combo[0]] === board[combo[1]] && board[combo[0]] === board[combo[2]]) {
+            won = true;
+            statusText.innerText = `Гравець ${board[combo[0]]} переміг! 🎉`;
+            myTurn = false;
+            break;
         }
     }
-    return moves[bestMove];
+    if (!won && !board.includes("")) {
+        statusText.innerText = "Нічия! 🤝";
+    }
 }
 
-function checkWinning(board, player) {
-    return winningConditions.some(cond => board[cond[0]] === player && board[cond[1]] === player && board[cond[2]] === player);
-}
-
-// --- СЕТЕВАЯ ЛОГИКА НА ЧИСТОМ JS ---
-let friendId = "";
-
-function connectToFriend() {
-    friendId = document.getElementById('friend-id').value.trim().toUpperCase();
-    if (!friendId) return alert("Введіть ID!");
-
-    mySymbol = 'O';
-    myTurn = false;
-    mode = 'online';
-    conn = true;
-
-    startGame('online');
-    statusText.innerText = "Гра онлайн. Очікування ходу суперника (Х)";
-    netStatusEl.innerText = "Підключено до друга!";
-
-    fetch(`https://kvdb.io{friendId}-join`, { method: 'POST', body: myId });
-    setInterval(listenForMoves, 1000);
-}
-
-setInterval(() => {
-    if (mode === 'online' || conn) return;
-    
-    fetch(`https://kvdb.io{myId}-join`)
-    .then(res => res.text())
-    .then(data => {
-        if (data && data.length === 6) {
-            friendId = data;
-            mySymbol = 'X';
-            myTurn = true;
-            mode = 'online';
-            conn = true;
-            startGame('online');
-            statusText.innerText = "Гра онлайн. Ваш хід (Х)";
-            netStatusEl.innerText = "Друг підключився!";
-            setInterval(listenForMoves, 1000);
-        }
-    }).catch(() => {});
-}, 2000);
-
-function listenForMoves() {
-    if (!conn || myTurn) return;
-
-    fetch(`https://kvdb.io{friendId}-move`)
-    .then(res => res.json())
-    .then(data => {
-        if (data && data.symbol !== mySymbol && board[data.index] === "") {
-            makeMove(data.index, data.symbol);
-            myTurn = true;
-            statusText.innerText = `Ваш хід (${mySymbol})`;
-            netStatusEl.innerText = "Суперник зробив хід.";
-            checkResult();
-        }
-    }).catch(() => {});
-}
+// Кнопка «До меню»
+document.getElementById('btn-back').addEventListener('click', () => {
+    if(gameArea) gameArea.classList.add('hidden');
+    if(menu) menu.classList.remove('hidden');
+    // Сбрасываем старое соединение, чтобы можно было играть заново
+    if(conn) conn.close();
+    board = ["", "", "", "", "", "", "", "", ""];
+    cells.forEach(c => { c.innerText = ""; c.className = "cell"; });
+});

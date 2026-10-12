@@ -18,13 +18,12 @@ peer.on('open', (id) => {
     if(netStatusEl) netStatusEl.innerText = "ID успішно створено! Надішліть його другу.";
 });
 
-// 2. Логика Игрока 1 (Создатель комнаты — ждет подключения друга)
+// 2. Логика Игрока 1 (Создатель комнаты)
 peer.on('connection', (connection) => {
     conn = connection;
-    mySymbol = 'X'; // Создатель всегда X
-    myTurn = true;  // И ходит первым!
+    mySymbol = 'X'; 
+    myTurn = true;  
     
-    // Принудительно открываем игровое поле у Создателя комнаты
     if(menu) menu.classList.add('hidden');
     if(gameArea) gameArea.classList.remove('hidden');
     
@@ -34,38 +33,34 @@ peer.on('connection', (connection) => {
     setupNetworkListeners();
 });
 
-// 3. Логика Игрока 2 (Кто вводит ID друга и нажимает кнопку)
+// 3. Логика Игрока 2 (Кто подключается по кнопке)
 function connectToFriend() {
     const friendId = document.getElementById('friend-id').value.trim();
     if (!friendId) return alert("Введіть ID друга!");
     
     conn = peer.connect(friendId); 
-    mySymbol = 'O'; // Подключившийся всегда O
-    myTurn = false; // И ждет первого хода соперника
+    mySymbol = 'O'; 
+    myTurn = false; 
 
-    // Принудительно открываем игровое поле у Гостя
     if(menu) menu.classList.add('hidden');
     if(gameArea) gameArea.classList.remove('hidden');
 
     statusText.innerText = "Гра онлайн. Очікування ходу суперника (Х)";
-    if(netStatusEl) netStatusEl.innerText = "Підключення до друга... Ви граєте за (О).";
+    if(netStatusEl) netStatusEl.innerText = "Підключення... Ви граєте за (О).";
     
     setupNetworkListeners();
 }
 
 // 4. Прием ходов по сети
 function setupNetworkListeners() {
-    // Принимаем ход от соперника
     conn.on('data', (data) => {
         if (data.type === 'move') {
             const idx = parseInt(data.index);
             
-            // Записываем ход соперника на своем экране
             board[idx] = data.symbol;
             cells[idx].innerText = data.symbol;
             cells[idx].classList.add(data.symbol.toLowerCase());
             
-            // Разблокируем наш ход!
             myTurn = true; 
             statusText.innerText = `Ваш хід (${mySymbol})`;
             if(netStatusEl) netStatusEl.innerText = "Суперник зробив свій хід.";
@@ -84,45 +79,43 @@ cells.forEach(cell => {
     cell.addEventListener('click', (e) => {
         const index = parseInt(e.target.getAttribute('data-index'));
 
-        // Проверяем условия перед ходом
-        if (!conn) return; // Нет сети
-        if (!myTurn) return; // Не наш ход!
-        if (board[index] !== '') return; // Клетка уже занята
+        if (!conn || !myTurn || board[index] !== '') return;
 
-        // Рисуем свой ход у себя на экране
         board[index] = mySymbol;
         e.target.innerText = mySymbol;
         e.target.classList.add(mySymbol.toLowerCase());
         
-        // Моментально отправляем данные о ходе другу по сети
         conn.send({ type: 'move', index: index, symbol: mySymbol });
 
-        // Блокируем свое поле до тех пор, пока друг не ответит ходом
         myTurn = false; 
         statusText.innerText = "Очікування ходу суперника...";
         checkOnlineResult();
     });
 });
 
-// Проверка победы или ничьей
+// Простая и надежная проверка победы без скрытых массивов
 function checkOnlineResult() {
-    const wins = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8], // Ряды
-        [0, 3, 6], [1, 4, 7], [2, 5, 8], // Колонки
-        [0, 4, 8], [2, 4, 6]             // Диагонали
-    ];
-    
     let won = false;
-    for (let combo of wins) {
-        const [a, b, c] = combo;
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            won = true;
-            statusText.innerText = `Гравець ${board[a]} переміг! 🎉`;
-            myTurn = false;
-            break;
-        }
+
+    // Расписываем все 8 комбинаций вручную, чтобы разметка системы ничего не урезала
+    if (board[0] !== "" && board[0] === board[1] && board[0] === board[2]) won = true;
+    if (board[3] !== "" && board[3] === board[4] && board[3] === board[5]) won = true;
+    if (board[6] !== "" && board[6] === board[7] && board[6] === board[8]) won = true;
+    if (board[0] !== "" && board[0] === board[3] && board[0] === board[6]) won = true;
+    if (board[1] !== "" && board[1] === board[4] && board[1] === board[7]) won = true;
+    if (board[2] !== "" && board[2] === board[5] && board[2] === board[8]) won = true;
+    if (board[0] !== "" && board[0] === board[4] && board[0] === board[8]) won = true;
+    if (board[2] !== "" && board[2] === board[4] && board[2] === board[6]) won = true;
+
+    if (won) {
+        // Так как ход переключается после клика, победитель — это тот, кто НЕ ходит сейчас
+        let winner = myTurn ? (mySymbol === 'X' ? 'O' : 'X') : mySymbol;
+        statusText.innerText = `Гравець ${winner} переміг! 🎉`;
+        myTurn = false;
+        return;
     }
-    if (!won && !board.includes("")) {
+
+    if (!board.includes("")) {
         statusText.innerText = "Нічия! 🤝";
     }
 }
@@ -135,3 +128,4 @@ document.getElementById('btn-back').addEventListener('click', () => {
     board = ["", "", "", "", "", "", "", "", ""];
     cells.forEach(c => { c.innerText = ""; c.className = "cell"; });
 });
+

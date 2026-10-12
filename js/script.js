@@ -24,12 +24,12 @@ peer.on('connection', (connection) => {
     mySymbol = 'X'; // Создатель всегда X
     myTurn = true;  // И ходит первым!
     
-    // Переключаем экраны меню на игру
+    // Принудительно открываем игровое поле у Создателя комнаты
     if(menu) menu.classList.add('hidden');
     if(gameArea) gameArea.classList.remove('hidden');
     
     statusText.innerText = "Гра онлайн. Ваш хід (Х)";
-    if(netStatusEl) netStatusEl.innerText = "Друг підключився!";
+    if(netStatusEl) netStatusEl.innerText = "Друг підключився! Ви граєте за (Х).";
     
     setupNetworkListeners();
 });
@@ -43,35 +43,32 @@ function connectToFriend() {
     mySymbol = 'O'; // Подключившийся всегда O
     myTurn = false; // И ждет первого хода соперника
 
+    // Принудительно открываем игровое поле у Гостя
     if(menu) menu.classList.add('hidden');
     if(gameArea) gameArea.classList.remove('hidden');
 
     statusText.innerText = "Гра онлайн. Очікування ходу суперника (Х)";
-    if(netStatusEl) netStatusEl.innerText = "Підключення до друга...";
+    if(netStatusEl) netStatusEl.innerText = "Підключення до друга... Ви граєте за (О).";
     
     setupNetworkListeners();
 }
 
 // 4. Прием ходов по сети
 function setupNetworkListeners() {
-    // Этот код сработает у Игрока 2, когда связь установится полностью
-    conn.on('open', () => {
-        if(mySymbol === 'O') {
-            if(netStatusEl) netStatusEl.innerText = "Успішно підключено до друга!";
-        }
-    });
-
     // Принимаем ход от соперника
     conn.on('data', (data) => {
         if (data.type === 'move') {
-            const idx = data.index;
+            const idx = parseInt(data.index);
+            
+            // Записываем ход соперника на своем экране
             board[idx] = data.symbol;
             cells[idx].innerText = data.symbol;
             cells[idx].classList.add(data.symbol.toLowerCase());
             
-            myTurn = true; // Теперь наш ход!
+            // Разблокируем наш ход!
+            myTurn = true; 
             statusText.innerText = `Ваш хід (${mySymbol})`;
-            if(netStatusEl) netStatusEl.innerText = "Суперник зробив хід.";
+            if(netStatusEl) netStatusEl.innerText = "Суперник зробив свій хід.";
             checkOnlineResult(); 
         }
     });
@@ -87,21 +84,21 @@ cells.forEach(cell => {
     cell.addEventListener('click', (e) => {
         const index = parseInt(e.target.getAttribute('data-index'));
 
-        // Блокируем клик, если:
-        // - не наш ход
-        // - нет сетевого соединения
-        // - клетка уже занята
-        if (!myTurn || !conn || board[index] !== '') return;
+        // Проверяем условия перед ходом
+        if (!conn) return; // Нет сети
+        if (!myTurn) return; // Не наш ход!
+        if (board[index] !== '') return; // Клетка уже занята
 
-        // Рисуем свой ход на своем экране
+        // Рисуем свой ход у себя на экране
         board[index] = mySymbol;
         e.target.innerText = mySymbol;
         e.target.classList.add(mySymbol.toLowerCase());
         
-        // Отправляем данные о ходе другу по сети
+        // Моментально отправляем данные о ходе другу по сети
         conn.send({ type: 'move', index: index, symbol: mySymbol });
 
-        myTurn = false; // Передаем ход сопернику
+        // Блокируем свое поле до тех пор, пока друг не ответит ходом
+        myTurn = false; 
         statusText.innerText = "Очікування ходу суперника...";
         checkOnlineResult();
     });
@@ -109,13 +106,18 @@ cells.forEach(cell => {
 
 // Проверка победы или ничьей
 function checkOnlineResult() {
-    const wins = [, [3, 4, 5], [6, 7, 8], // Ряды, [1, 4, 7], [2, 5, 8], // Колонки, [2, 4, 6]             // Диагонали
+    const wins = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8], // Ряды
+        [0, 3, 6], [1, 4, 7], [2, 5, 8], // Колонки
+        [0, 4, 8], [2, 4, 6]             // Диагонали
     ];
+    
     let won = false;
     for (let combo of wins) {
-        if (board[combo[0]] && board[combo[0]] === board[combo[1]] && board[combo[0]] === board[combo[2]]) {
+        const [a, b, c] = combo;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
             won = true;
-            statusText.innerText = `Гравець ${board[combo[0]]} переміг! 🎉`;
+            statusText.innerText = `Гравець ${board[a]} переміг! 🎉`;
             myTurn = false;
             break;
         }
@@ -129,7 +131,6 @@ function checkOnlineResult() {
 document.getElementById('btn-back').addEventListener('click', () => {
     if(gameArea) gameArea.classList.add('hidden');
     if(menu) menu.classList.remove('hidden');
-    // Сбрасываем старое соединение, чтобы можно было играть заново
     if(conn) conn.close();
     board = ["", "", "", "", "", "", "", "", ""];
     cells.forEach(c => { c.innerText = ""; c.className = "cell"; });

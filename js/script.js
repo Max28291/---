@@ -1,3 +1,8 @@
+// --- ВСТАВИТЬ В САМЫЙ ВЕРХ ФАЙЛА ---
+const peer = new Peer(); 
+let conn = null;
+let mySymbol = '';     // 'X' або 'O'
+let myTurn = false;    // Чи можна зараз ходити
 const boardElement = document.getElementById('board');
 const cells = document.querySelectorAll('.cell');
 const statusText = document.getElementById('status');
@@ -20,6 +25,28 @@ const winningConditions = [
 // Инициализация кнопок меню
 document.getElementById('btn-vs-player').addEventListener('click', () => startGame('player'));
 document.getElementById('btn-vs-ai').addEventListener('click', () => {
+// Пример вашей функции клика (найдите похожую у себя):
+cell.addEventListener('click', (e) => {
+    const index = e.target.getAttribute('data-index'); // или id клетки
+
+    // 1. ДОБАВИТЬ ЭТУ СТРОКУ В НАЧАЛО КЛИКА:
+    // Если не наш ход, нет сети или клетка занята — игнорируем клик
+    if (!myTurn || !conn || gameState[index] !== '') return;
+
+    // ... Тут остается ВАШ старый код, который рисует крестик/нолик на экране ...
+    // Например: e.target.innerText = mySymbol;
+
+    // 2. ДОБАВИТЬ ЭТУ СТРОКУ ПОСЛЕ ОТРИСОВКИ ХОДА:
+    // Отправляем этот ход другу по сети
+    conn.send({ type: 'move', index: index, symbol: mySymbol });
+
+    // 3. ДОБАВИТЬ ЭТИ СТРОКИ:
+    myTurn = false; // Передаем ход
+    document.getElementById('status').innerText = "Очікування ходу суперника...";
+    
+    // ... Тут ваш код проверки победы (например, checkWin()) ...
+});
+
     aiSettings.classList.remove('hidden');
     document.getElementById('btn-vs-player').classList.add('hidden');
     document.getElementById('btn-vs-ai').classList.add('hidden');
@@ -180,4 +207,51 @@ function checkWinning(board, player) {
         board[condition[1]] === player && 
         board[condition[2]] === player
     );
+}
+// --- ВСТАВИТЬ В САМЫЙ КОНЕЦ ФАЙЛА ---
+
+const statusEl = document.getElementById('status');
+
+// Получаем ваш ID от сервера и выводим на экран
+peer.on('open', (id) => {
+    document.getElementById('my-id').innerText = id;
+    statusEl.innerText = "Надішліть свій ID другу або введіть ID друга для початку гри.";
+});
+
+// Логика для Игрока 1 (к вам подключился друг)
+peer.on('connection', (connection) => {
+    conn = connection;
+    mySymbol = 'X'; 
+    myTurn = true;  
+    statusEl.innerText = "Друг підключився! Ваш хід (Х)";
+    setupNetworkListeners();
+});
+
+// Логика для Игрока 2 (вы подключаетесь по кнопке)
+function connectToFriend() {
+    const friendId = document.getElementById('friend-id').value.trim();
+    if (!friendId) return alert("Будь ласка, введіть ID!");
+    
+    conn = peer.connect(friendId); 
+    mySymbol = 'O'; 
+    myTurn = false; 
+    statusEl.innerText = "Підключення... Очікування ходу суперника (Х)";
+    setupNetworkListeners();
+}
+
+// Прием хода от друга по сети
+function setupNetworkListeners() {
+    conn.on('data', (data) => {
+        if (data.type === 'move') {
+            // ВЫЗЫВАЕМ ВАШУ ФУНКЦИЮ ОТРИСОВКИ ХОДА СУПЕРНИКА
+            // Передаем индекс клетки data.index и его символ data.symbol
+            makeMove(data.index, data.symbol); 
+            
+            myTurn = true; 
+            statusEl.innerText = `Ваш хід (${mySymbol})`;
+            
+            // ВЫЗЫВАЕМ ВАШУ ФУНКЦИЮ ПРОВЕРКИ КОНЦА ИГРЫ
+            checkGameEnd(); 
+        }
+    });
 }

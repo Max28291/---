@@ -93,23 +93,21 @@ cells.forEach(function(cell) {
     });
 });
 
-// Простая проверка победы (без массивов и сложных циклов)
+// Простая проверка победы (полностью переписана без циклов и массивов, чтобы ничего не вырезалось)
 function checkOnlineResult() {
     let won = false;
-
-    // Горизонтали
-    if (board[0] !== "" && board[0] === board[1] && board[0] === board[2]) won = true;
-    if (board[3] !== "" && board[3] === board[4] && board[3] === board[5]) won = true;
-    if (board[6] !== "" && board[6] === board[7] && board[6] === board[8]) won = true;
     
-    // Вертикали
-    if (board[0] !== "" && board[0] === board[3] && board[0] === board[6]) won = true;
-    if (board[1] !== "" && board[1] === board[4] && board[1] === board[7]) won = true;
-    if (board[2] !== "" && board[2] === board[5] && board[2] === board[8]) won = true;
+    // Проверяем линии по очереди
+    if(board[0] !== "" && board[0] === board[1] && board[1] === board[2]) won = true;
+    if(board[3] !== "" && board[3] === board[4] && board[4] === board[5]) won = true;
+    if(board[6] !== "" && board[6] === board[7] && board[7] === board[8]) won = true;
     
-    // Диагонали
-    if (board[0] !== "" && board[0] === board[4] && board[0] === board[8]) won = true;
-    if (board[2] !== "" && board[2] === board[4] && board[2] === board[6]) won = true;
+    if(board[0] !== "" && board[0] === board[3] && board[3] === board[6]) won = true;
+    if(board[1] !== "" && board[1] === board[4] && board[4] === board[7]) won = true;
+    if(board[2] !== "" && board[2] === board[5] && board[5] === board[8]) won = true;
+    
+    if(board[0] !== "" && board[0] === board[4] && board[4] === board[8]) won = true;
+    if(board[2] !== "" && board[2] === board[4] && board[4] === board[6]) won = true;
 
     if (won) {
         let winner = myTurn ? (mySymbol === 'X' ? 'O' : 'X') : mySymbol;
